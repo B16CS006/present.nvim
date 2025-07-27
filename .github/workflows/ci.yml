@@ -9,15 +9,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubunut-22.04] #, macos-12, windows-2022]
+        os: [ubunut-22.04,  macos-12, windows-2022]
         rev: [nightly]
         include:
           - os: ubunut-22.04
             install-rg: sudo apt update && sudo apt install -y ripgrep
-          # - os: macos-latest
-          #   install-rg: brew update && brew install ripgrep
-          # - os: windows-latest
-          #   install-rg: choco install ripgrep
+          - os: macos-12
+            install-rg: brew update && brew install ripgrep
+          - os: windows-2022
+            install-rg: choco install ripgrep
 
     steps:
       - uses: actions/checkout@v4
