@@ -14,9 +14,65 @@ local function create_floating_window(config, enter)
   return { buf = buf, win = win }
 end
 
-M.setup = function()
-  -- nothing
+--- Default executor for lua code
+---@param block present.Block
+local execute_lua_code = function(block)
+  -- Override the default print function, the capture all the output
+  -- Store the original print function
+  local original_print = print
+
+  local output = {}
+
+  -- Redefine the print function
+  print = function(...)
+    local args = { ... }
+    local message = table.concat(vim.tbl_map(tostring, args), "\t")
+    table.insert(output, message)
+  end
+
+  -- Call the provided function
+  local chunk = loadstring(block.body)
+  pcall(function()
+    if not chunk then
+      table.insert(output, "<<<BROKEN CODE>>>")
+    else
+      chunk()
+    end
+    return output
+  end)
+
+  -- Restore the original print function
+  print = original_print
+
+  return output
 end
+
+M.create_system_executor = function(program)
+  return function(block)
+    local tempfile = vim.fn.tempname()
+    vim.fn.writefile(vim.split(block.body, "\n"), tempfile)
+    local result = vim.system({ program, tempfile }, { text = true }):wait()
+    return vim.split(result.stdout, "\n")
+  end
+end
+
+local options = {
+  executors = {
+    lua = execute_lua_code,
+    javascript = M.create_system_executor("node"),
+    python = M.create_system_executor("python3"),
+  }
+}
+M.setup = function(opts)
+  opts = opts or {}
+  opts.executors = opts.executors or {}
+  opts.executors.lua = opts.executors.lua or execute_lua_code
+  opts.executors.javascript = opts.executors.lua or M.create_system_executor("node")
+  opts.executors.python = opts.executors.lua or M.create_system_executor("python3")
+
+  options = opts
+end
+
 
 ---@class present.Slides
 ---@field slides present.Slide[]: The slides of file
@@ -166,9 +222,13 @@ local foreach_floating_window = function(cb)
   end
 end
 
-local present_keymap = function(mode, key, callback)
-  vim.keymap.set(mode, key, callback, {
+local present_keymap = function(mode, key, callback, buffer)
+  if not buffer then
     buffer = state.floating_windows.body.buf
+  end
+
+  vim.keymap.set(mode, key, callback, {
+    buffer = buffer
   })
 end
 
@@ -230,51 +290,37 @@ M.start_presentation = function(opts)
 
   present_keymap("n", "X", function()
     local slide = state.parsed.slides[state.current_slide]
-    -- TODO: Make a way for people to execute this for other languages
+    -- TODO: add some way to execute multiple codeblock on single slide
     local block = slide.blocks[1]
     if not block then
       print("No blocks on this page")
       return
     end
 
-    local chunk = loadstring(block.body)
-    if chunk == nil then
-      print("<<<chunk is nil on loadstring>>>")
+
+    local executor = options.executors[block.language]
+
+    if not executor then
+      print("No valid exector for this language")
       return
     end
 
-    -- Override the default print function, the capture all the output
-    -- Store the original print function
-    local original_print = print
-
     -- Table to capture print messages
-    local output = { "", "# Code", "", "```" .. block.language }
+    local output = { "# Code", "", "```" .. block.language }
     vim.list_extend(output, vim.split(block.body, "\n"))
     table.insert(output, "```")
 
-    -- Redefine the print function
-    print = function(...)
-      local args = { ... }
-      local message = table.concat(vim.tbl_map(tostring, args), "\t")
-      table.insert(output, message)
-    end
-
-    -- Call the provided function
-    pcall(function()
-      table.insert(output, "")
-      table.insert(output, "# Output")
-      table.insert(output, "")
-      chunk()
-    end)
-
-    -- Restore the original print function
-    print = original_print
+    table.insert(output, "")
+    table.insert(output, "# Output")
+    table.insert(output, "")
+    table.insert(output, "```")
+    vim.list_extend(output, executor(block))
+    table.insert(output, "```")
 
     local output_buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
-
     local temp_width = math.floor(vim.o.columns * 0.8)
     local temp_height = math.floor(vim.o.lines * 0.8)
-    vim.api.nvim_open_win(output_buf, true, {
+    local output_win = vim.api.nvim_open_win(output_buf, true, {
       relative = "editor",
       style = "minimal",
       noautocmd = true, -- we are temp opening this window, so don't fire the autocommand
@@ -285,6 +331,9 @@ M.start_presentation = function(opts)
       col = (vim.o.columns - temp_width) / 2,
     })
 
+    present_keymap("n", "q", function()
+      vim.api.nvim_win_close(output_win, true)
+    end, output_buf)
     vim.bo[output_buf].filetype = "markdown"
     vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output)
   end)
@@ -332,7 +381,7 @@ M.start_presentation = function(opts)
   set_slide_content(state.current_slide)
 end
 
--- M.start_presentation({ bufnr = 4 })
+-- M.start_presentation({ bufnr = 15 })
 
 M._parse_slides = parse_slides
 

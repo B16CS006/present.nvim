@@ -10,6 +10,23 @@ Can execute code in lua block when you have them in a slide
 print("Hello world", 37, true)
 ```
 
+# Features
+
+Can execute code in lua block when you have them in a slide
+
+```javascript
+console.log({myfield: true, other: false})
+```
+
+# Features
+
+Can execute code in lua block when you have them in a slide
+
+```python
+print('Python codeblock')
+```
+
+
 # Usage
 
 ```lua
