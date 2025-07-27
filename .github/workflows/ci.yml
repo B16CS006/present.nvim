@@ -30,9 +30,9 @@ jobs:
       - name: Prepare
         run: |
           ${{ matrix.install-rg }}
-          rg --version || true # not working on windows
+          rg --version
 
-          git clone -- depth 1 https://github.com/nvim-lua/plenary.nvim ../plenary.nvim
+          git clone --depth 1 https://github.com/nvim-lua/plenary.nvim ../plenary.nvim
 
       - name: Run tests
         run: |
