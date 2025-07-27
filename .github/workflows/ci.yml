@@ -12,10 +12,10 @@ jobs:
         os: [windows-2022]
         rev: [nightly]
         include:
-          - os: ubunut-22.04
-            install-rg: sudo apt update && sudo apt install -y ripgrep
-          - os: macos-12
-            install-rg: brew update && brew install ripgrep
+          # - os: ubunut-22.04
+          #   install-rg: sudo apt update && sudo apt install -y ripgrep
+          # - os: macos-12
+          #   install-rg: brew update && brew install ripgrep
           - os: windows-2022
             install-rg: choco install ripgrep
 
