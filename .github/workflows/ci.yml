@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubunut-22.04] #, macos-12, windows-2022]
-        rev: nightly
+        rev: [nightly]
         include:
           - os: ubunut-22.04
             install-rg: sudo apt update && sudo apt install -y ripgrep
