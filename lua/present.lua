@@ -24,6 +24,11 @@ end
 ---@class present.Slide
 ---@field title string: The title of the slide
 ---@field body string[]: The body of the slide
+---@field blocks present.Block[]: A codeblock inside of a slide
+
+---@class present.Block
+---@field language string: The language of the codeblock
+---@field body string: The body of the codeblock
 
 --- Takes some lines and parses them
 ---@param lines string[]: The lines in the buffer
@@ -32,7 +37,8 @@ local parse_slides = function(lines)
   local slides = { slides = {} }
   local current_slide = {
     title = "",
-    body = {}
+    body = {},
+    blocks = {}
   }
 
   local separator = "^# "
@@ -45,13 +51,42 @@ local parse_slides = function(lines)
       end
       current_slide = {
         title = line,
-        body = {}
+        body = {},
+        blocks = {}
       }
     else
       table.insert(current_slide.body, line)
     end
   end
   table.insert(slides.slides, current_slide)
+
+  for _, slide in ipairs(slides.slides) do
+    local block = {
+      language = nil,
+      body = "",
+    }
+    local inside_block = false
+    for _, line in ipairs(slide.body) do
+      if vim.startswith(line, "```") then
+        if not inside_block then
+          inside_block = true
+          block.language = string.sub(line, 4)
+        else
+          inside_block = false
+          block.body = vim.trim(block.body)
+          table.insert(slide.blocks, block)
+          block = {}
+        end
+      else
+        if inside_block then
+          -- OK, we are inside a current markdown block
+          -- but it is not one of the guards
+          -- so insert this text
+          block.body = block.body .. line .. "\n"
+        end
+      end
+    end
+  end
 
   return slides
 end
@@ -193,6 +228,66 @@ M.start_presentation = function(opts)
     vim.api.nvim_win_close(state.floating_windows.body.win, true)
   end)
 
+  present_keymap("n", "X", function()
+    local slide = state.parsed.slides[state.current_slide]
+    -- TODO: Make a way for people to execute this for other languages
+    local block = slide.blocks[1]
+    if not block then
+      print("No blocks on this page")
+      return
+    end
+
+    local chunk = loadstring(block.body)
+    if chunk == nil then
+      print("<<<chunk is nil on loadstring>>>")
+      return
+    end
+
+    -- Override the default print function, the capture all the output
+    -- Store the original print function
+    local original_print = print
+
+    -- Table to capture print messages
+    local output = { "", "# Code", "", "```" .. block.language }
+    vim.list_extend(output, vim.split(block.body, "\n"))
+    table.insert(output, "```")
+
+    -- Redefine the print function
+    print = function(...)
+      local args = { ... }
+      local message = table.concat(vim.tbl_map(tostring, args), "\t")
+      table.insert(output, message)
+    end
+
+    -- Call the provided function
+    pcall(function()
+      table.insert(output, "")
+      table.insert(output, "# Output")
+      table.insert(output, "")
+      chunk()
+    end)
+
+    -- Restore the original print function
+    print = original_print
+
+    local output_buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
+
+    local temp_width = math.floor(vim.o.columns * 0.8)
+    local temp_height = math.floor(vim.o.lines * 0.8)
+    vim.api.nvim_open_win(output_buf, true, {
+      relative = "editor",
+      style = "minimal",
+      noautocmd = true, -- we are temp opening this window, so don't fire the autocommand
+      width = temp_width,
+      height = temp_height,
+      row = (vim.o.lines - temp_height) / 2,
+      col = (vim.o.columns - temp_width) / 2,
+    })
+
+    vim.bo[output_buf].filetype = "markdown"
+    vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, output)
+  end)
+
   local restore = {
     cmdheight = {
       original = vim.o.cmdheight,
@@ -236,7 +331,7 @@ M.start_presentation = function(opts)
   set_slide_content(state.current_slide)
 end
 
--- M.start_presentation({ bufnr = 309 })
+M.start_presentation({ bufnr = 4 })
 
 M._parse_slides = parse_slides
 
